@@ -43,7 +43,7 @@ describe('circuit-breaker', () => {
     });
 
     it('throws CircuitOpenError when circuit is OPEN', async () => {
-      const { withCircuitBreaker, getCircuitState, CircuitOpenError } = await import(
+      const { withCircuitBreaker, getCircuitState } = await import(
         '../../../hooks/lib/circuit-breaker.js'
       );
 
@@ -64,7 +64,7 @@ describe('circuit-breaker', () => {
     });
 
     it('transitions to HALF_OPEN after recovery timeout', async () => {
-      const { withCircuitBreaker, getCircuitState, resetCircuitBreaker } = await import(
+      const { withCircuitBreaker, getCircuitState } = await import(
         '../../../hooks/lib/circuit-breaker.js'
       );
 
