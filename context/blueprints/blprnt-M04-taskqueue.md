@@ -2,6 +2,11 @@
 
 > Master: blprnt-master.md S5 | Impl: impl-M04-taskqueue.md | Phase: 2 | Effort: 2d | Deps: M-01, M-02, M-03
 
+## Implementation Progress
+**Status**: ✅ Complete | **Implemented**: 2026-02-23
+**Branch**: main | **Commits**: 8d47816
+**Tests**: 22 passing | **Coverage**: 91.28%
+
 ## 0. Context Manifest
 
 ### MUST LOAD
@@ -79,30 +84,31 @@ Errors: TASK_NOT_FOUND → log warn | DUPLICATE → return false
 
 ## 6. Implementation Plan
 
-**TASK 1**: Task file utilities (0.25d, blocked by M-03)
+**TASK 1**: Task file utilities (0.25d, blocked by M-03) ✅ (commit: 8d47816)
 - Files: `src/task-queue.ts`
 - AC: Load/save task files with locking, auto-create empty queue
 - Impl: see impl-M04 S4.1
 
-**TASK 2**: Add task with dedup and sequencing (0.5d, blocked by TASK 1)
+**TASK 2**: Add task with dedup and sequencing (0.5d, blocked by TASK 1) ✅ (commit: 8d47816)
 - Files: `src/task-queue.ts`
 - AC: Rejects duplicate messageTs; assigns sequence; sorts
 - Impl: see impl-M04 S4.2
 
-**TASK 3**: Claim with TTL reset (0.5d, blocked by TASK 1)
+**TASK 3**: Claim with TTL reset (0.5d, blocked by TASK 1) ✅ (commit: 8d47816)
 - Files: `src/task-queue.ts`
 - AC: Resets CLAIMED tasks older than 30m; claims next PENDING
 - Impl: see impl-M04 S4.3
 
-**TASK 4**: Complete and clear operations (0.25d, blocked by TASK 1)
+**TASK 4**: Complete and clear operations (0.25d, blocked by TASK 1) ✅ (commit: 8d47816)
 - Files: `src/task-queue.ts`
 - AC: Updates status, timestamps; clearTasks removes all
 - Impl: see impl-M04 S4.4
 
-**TASK 5**: Unit tests (0.5d, blocked by TASK 4)
+**TASK 5**: Unit tests (0.5d, blocked by TASK 4) ✅ (commit: 8d47816)
 - Files: `tests/unit/task-queue.test.ts`
 - AC: 95% coverage; tests dedup, TTL, concurrency
 - Impl: see impl-M04 S4.5
+- Results: 22 tests passing, 91.28% coverage
 
 ---
 

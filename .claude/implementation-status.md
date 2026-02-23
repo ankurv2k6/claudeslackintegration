@@ -4,6 +4,9 @@
 |--------|--------|----------|--------|-------------|------------|---------|
 | slack-integration-plan | Complete | N/A | main | N/A | Verified | 2026-02-23 |
 | M-01 Config | Complete | 100% | main | 27f8b30 | All tasks ✅ | 2026-02-23 |
+| M-02 Logger | Complete | 94.54% | main | d9e3528 | All tasks ✅ | 2026-02-23 |
+| M-03 Registry | Complete | 91.58% | main | 56f4c3f | All tasks ✅ | 2026-02-23 |
+| M-04 TaskQueue | Complete | 91.28% | main | 8d47816 | All tasks ✅ | 2026-02-23 |
 
 ## Active Plans
 
