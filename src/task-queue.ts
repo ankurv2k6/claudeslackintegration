@@ -48,6 +48,22 @@ export const TaskQueueSchema = z.object({
   tasks: z.array(TaskSchema),
 });
 
+// Input validation schemas (SEC-001, SEC-002, SEC-003)
+const SessionIdSchema = z.string().uuid();
+
+export const CreateTaskInputSchema = z.object({
+  prompt: z.string().max(4000),
+  slackUser: z.string().startsWith('U'),
+  messageTs: z.string().regex(/^\d+\.\d+$/),
+});
+
+/**
+ * Validate sessionId to prevent path traversal attacks (SEC-001)
+ */
+function validateSessionId(sessionId: string): string {
+  return SessionIdSchema.parse(sessionId);
+}
+
 // TypeScript types
 export interface Task {
   id: string;
@@ -143,6 +159,12 @@ async function readTaskQueue(sessionId: string): Promise<TaskQueue> {
       logger.error({ action: 'TASK_QUEUE_PARSE_ERROR', sessionId, error: err.message });
       throw new TaskQueueError('CORRUPT_JSON', 'Task queue file contains invalid JSON');
     }
+    // LOG-004: Log generic errors before throwing
+    logger.error({
+      action: 'TASK_QUEUE_READ_ERROR',
+      sessionId,
+      error: (err as Error).message,
+    });
     throw err;
   }
 }
@@ -194,19 +216,24 @@ function resetStuckTasks(queue: TaskQueue): number {
  * @returns true if task was added, false if duplicate
  */
 export async function addTask(sessionId: string, input: CreateTaskInput): Promise<boolean> {
+  // SEC-001: Validate sessionId to prevent path traversal
+  const validSessionId = validateSessionId(sessionId);
+  // SEC-002, SEC-003: Validate input
+  const validInput = CreateTaskInputSchema.parse(input);
+
   await ensureTasksDir();
-  const filePath = getTaskFilePath(sessionId);
+  const filePath = getTaskFilePath(validSessionId);
 
   return withFileLock(filePath, async () => {
-    const queue = await readTaskQueue(sessionId);
+    const queue = await readTaskQueue(validSessionId);
 
     // Check for duplicate messageTs
-    const existing = queue.tasks.find((t) => t.messageTs === input.messageTs);
+    const existing = queue.tasks.find((t) => t.messageTs === validInput.messageTs);
     if (existing) {
       logger.info({
         action: 'TASK_DUPLICATE_REJECTED',
-        sessionId,
-        messageTs: input.messageTs,
+        sessionId: validSessionId,
+        messageTs: validInput.messageTs,
       });
       return false;
     }
@@ -217,9 +244,9 @@ export async function addTask(sessionId: string, input: CreateTaskInput): Promis
     const task: Task = {
       id: `task_${Date.now()}`,
       sequence: queue.lastSequence,
-      prompt: input.prompt,
-      slackUser: input.slackUser,
-      messageTs: input.messageTs,
+      prompt: validInput.prompt,
+      slackUser: validInput.slackUser,
+      messageTs: validInput.messageTs,
       receivedAt: new Date().toISOString(),
       status: 'PENDING',
     };
@@ -229,11 +256,11 @@ export async function addTask(sessionId: string, input: CreateTaskInput): Promis
     // Sort by sequence number (maintain order)
     queue.tasks.sort((a, b) => a.sequence - b.sequence);
 
-    await writeTaskQueue(sessionId, queue);
+    await writeTaskQueue(validSessionId, queue);
 
     logger.info({
       action: 'TASK_ADDED',
-      sessionId,
+      sessionId: validSessionId,
       taskId: task.id,
       sequence: task.sequence,
     });
@@ -250,18 +277,21 @@ export async function addTask(sessionId: string, input: CreateTaskInput): Promis
  * @returns The claimed task or null if no pending tasks
  */
 export async function claimNextTask(sessionId: string): Promise<Task | null> {
+  // SEC-001: Validate sessionId to prevent path traversal
+  const validSessionId = validateSessionId(sessionId);
+
   await ensureTasksDir();
-  const filePath = getTaskFilePath(sessionId);
+  const filePath = getTaskFilePath(validSessionId);
 
   return withFileLock(filePath, async () => {
-    const queue = await readTaskQueue(sessionId);
+    const queue = await readTaskQueue(validSessionId);
 
     // Reset stuck tasks
     const resetCount = resetStuckTasks(queue);
     if (resetCount > 0) {
       logger.info({
         action: 'STUCK_TASKS_RESET',
-        sessionId,
+        sessionId: validSessionId,
         count: resetCount,
       });
     }
@@ -277,11 +307,11 @@ export async function claimNextTask(sessionId: string): Promise<Task | null> {
     pendingTask.claimedAt = new Date().toISOString();
     pendingTask.claimedBy = `hook_${process.pid}`;
 
-    await writeTaskQueue(sessionId, queue);
+    await writeTaskQueue(validSessionId, queue);
 
     logger.info({
       action: 'TASK_CLAIMED',
-      sessionId,
+      sessionId: validSessionId,
       taskId: pendingTask.id,
       claimedBy: pendingTask.claimedBy,
     });
@@ -304,17 +334,20 @@ export async function completeTask(
   success: boolean,
   error?: string,
 ): Promise<void> {
+  // SEC-001: Validate sessionId to prevent path traversal
+  const validSessionId = validateSessionId(sessionId);
+
   await ensureTasksDir();
-  const filePath = getTaskFilePath(sessionId);
+  const filePath = getTaskFilePath(validSessionId);
 
   return withFileLock(filePath, async () => {
-    const queue = await readTaskQueue(sessionId);
+    const queue = await readTaskQueue(validSessionId);
 
     const task = queue.tasks.find((t) => t.id === taskId);
     if (!task) {
       logger.warn({
         action: 'TASK_NOT_FOUND',
-        sessionId,
+        sessionId: validSessionId,
         taskId,
       });
       throw new TaskQueueError('TASK_NOT_FOUND', `Task ${taskId} not found`);
@@ -326,11 +359,11 @@ export async function completeTask(
       task.error = error;
     }
 
-    await writeTaskQueue(sessionId, queue);
+    await writeTaskQueue(validSessionId, queue);
 
     logger.info({
       action: success ? 'TASK_COMPLETED' : 'TASK_FAILED',
-      sessionId,
+      sessionId: validSessionId,
       taskId,
       error: error || undefined,
     });
@@ -345,11 +378,14 @@ export async function completeTask(
  * @returns Array of tasks
  */
 export async function getTasks(sessionId: string, status?: TaskStatus): Promise<Task[]> {
+  // SEC-001: Validate sessionId to prevent path traversal
+  const validSessionId = validateSessionId(sessionId);
+
   await ensureTasksDir();
-  const filePath = getTaskFilePath(sessionId);
+  const filePath = getTaskFilePath(validSessionId);
 
   return withFileLock(filePath, async () => {
-    const queue = await readTaskQueue(sessionId);
+    const queue = await readTaskQueue(validSessionId);
 
     if (status) {
       return queue.tasks.filter((t) => t.status === status);
@@ -366,16 +402,19 @@ export async function getTasks(sessionId: string, status?: TaskStatus): Promise<
  * @param sessionId - The session UUID
  */
 export async function clearTasks(sessionId: string): Promise<void> {
+  // SEC-001: Validate sessionId to prevent path traversal
+  const validSessionId = validateSessionId(sessionId);
+
   await ensureTasksDir();
-  const filePath = getTaskFilePath(sessionId);
+  const filePath = getTaskFilePath(validSessionId);
 
   return withFileLock(filePath, async () => {
     const queue: TaskQueue = { version: 1, lastSequence: 0, tasks: [] };
-    await writeTaskQueue(sessionId, queue);
+    await writeTaskQueue(validSessionId, queue);
 
     logger.info({
       action: 'TASKS_CLEARED',
-      sessionId,
+      sessionId: validSessionId,
     });
   });
 }
@@ -392,11 +431,14 @@ export async function removeTaskByMessageTs(
   sessionId: string,
   messageTs: string,
 ): Promise<boolean> {
+  // SEC-001: Validate sessionId to prevent path traversal
+  const validSessionId = validateSessionId(sessionId);
+
   await ensureTasksDir();
-  const filePath = getTaskFilePath(sessionId);
+  const filePath = getTaskFilePath(validSessionId);
 
   return withFileLock(filePath, async () => {
-    const queue = await readTaskQueue(sessionId);
+    const queue = await readTaskQueue(validSessionId);
 
     const index = queue.tasks.findIndex((t) => t.messageTs === messageTs);
     if (index === -1) {
@@ -404,11 +446,11 @@ export async function removeTaskByMessageTs(
     }
 
     const removed = queue.tasks.splice(index, 1)[0];
-    await writeTaskQueue(sessionId, queue);
+    await writeTaskQueue(validSessionId, queue);
 
     logger.info({
       action: 'TASK_REMOVED',
-      sessionId,
+      sessionId: validSessionId,
       taskId: removed.id,
       messageTs,
     });
@@ -434,15 +476,24 @@ export async function getPendingCount(sessionId: string): Promise<number> {
  * @param sessionId - The session UUID
  */
 export async function deleteTaskFile(sessionId: string): Promise<void> {
-  const filePath = getTaskFilePath(sessionId);
+  // SEC-001: Validate sessionId to prevent path traversal
+  const validSessionId = validateSessionId(sessionId);
+
+  const filePath = getTaskFilePath(validSessionId);
   try {
     await fs.unlink(filePath);
     logger.info({
       action: 'TASK_FILE_DELETED',
-      sessionId,
+      sessionId: validSessionId,
     });
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+      // LOG-006: Log error before throwing
+      logger.error({
+        action: 'TASK_FILE_DELETE_ERROR',
+        sessionId: validSessionId,
+        error: (err as Error).message,
+      });
       throw err;
     }
     // File doesn't exist, that's fine

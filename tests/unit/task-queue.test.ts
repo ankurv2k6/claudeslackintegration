@@ -663,4 +663,122 @@ describe('task-queue', () => {
       expect(uniqueSequences.size).toBe(10);
     });
   });
+
+  describe('input validation (SEC-001, SEC-002)', () => {
+    it('rejects invalid sessionId format', async () => {
+      vi.doMock('../../src/config.js', () => ({
+        DATA_DIR: TEST_DATA_DIR,
+        LOGS_DIR: TEST_DATA_DIR,
+        getConfig: () => ({ logLevel: 'error' }),
+      }));
+
+      const { addTask } = await import('../../src/task-queue.js');
+
+      await expect(
+        addTask('not-a-uuid', {
+          prompt: 'Test',
+          slackUser: 'U1234567890',
+          messageTs: '1234567890.123456',
+        })
+      ).rejects.toThrow();
+    });
+
+    it('rejects path traversal in sessionId', async () => {
+      vi.doMock('../../src/config.js', () => ({
+        DATA_DIR: TEST_DATA_DIR,
+        LOGS_DIR: TEST_DATA_DIR,
+        getConfig: () => ({ logLevel: 'error' }),
+      }));
+
+      const { addTask } = await import('../../src/task-queue.js');
+
+      await expect(
+        addTask('../etc/passwd', {
+          prompt: 'Test',
+          slackUser: 'U1234567890',
+          messageTs: '1234567890.123456',
+        })
+      ).rejects.toThrow();
+    });
+
+    it('rejects invalid slackUser format', async () => {
+      vi.doMock('../../src/config.js', () => ({
+        DATA_DIR: TEST_DATA_DIR,
+        LOGS_DIR: TEST_DATA_DIR,
+        getConfig: () => ({ logLevel: 'error' }),
+      }));
+
+      const { addTask } = await import('../../src/task-queue.js');
+
+      await expect(
+        addTask('a0000000-0000-0000-0000-000000000021', {
+          prompt: 'Test',
+          slackUser: 'invalid-user',
+          messageTs: '1234567890.123456',
+        })
+      ).rejects.toThrow();
+    });
+
+    it('rejects invalid messageTs format', async () => {
+      vi.doMock('../../src/config.js', () => ({
+        DATA_DIR: TEST_DATA_DIR,
+        LOGS_DIR: TEST_DATA_DIR,
+        getConfig: () => ({ logLevel: 'error' }),
+      }));
+
+      const { addTask } = await import('../../src/task-queue.js');
+
+      await expect(
+        addTask('a0000000-0000-0000-0000-000000000022', {
+          prompt: 'Test',
+          slackUser: 'U1234567890',
+          messageTs: 'invalid-ts',
+        })
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('error handling (TEST-001, TEST-002)', () => {
+    it('handles corrupted task queue schema', async () => {
+      vi.doMock('../../src/config.js', () => ({
+        DATA_DIR: TEST_DATA_DIR,
+        LOGS_DIR: TEST_DATA_DIR,
+        getConfig: () => ({ logLevel: 'error' }),
+      }));
+
+      const { getTasks } = await import('../../src/task-queue.js');
+
+      const sessionId = 'a0000000-0000-0000-0000-000000000023';
+
+      // Write invalid JSON structure (wrong version)
+      const taskFilePath = path.join(TEST_TASKS_DIR, `${sessionId}.json`);
+      await fs.mkdir(TEST_TASKS_DIR, { recursive: true });
+      await fs.writeFile(taskFilePath, JSON.stringify({
+        version: 999,
+        lastSequence: 0,
+        tasks: [],
+      }));
+
+      await expect(getTasks(sessionId)).rejects.toThrow('corrupted');
+    });
+
+    it('handles malformed JSON in task file', async () => {
+      vi.doMock('../../src/config.js', () => ({
+        DATA_DIR: TEST_DATA_DIR,
+        LOGS_DIR: TEST_DATA_DIR,
+        getConfig: () => ({ logLevel: 'error' }),
+      }));
+
+      const { getTasks } = await import('../../src/task-queue.js');
+
+      const sessionId = 'a0000000-0000-0000-0000-000000000024';
+
+      // Write syntactically invalid JSON
+      const taskFilePath = path.join(TEST_TASKS_DIR, `${sessionId}.json`);
+      await fs.mkdir(TEST_TASKS_DIR, { recursive: true });
+      await fs.writeFile(taskFilePath, '{ invalid json syntax');
+
+      await expect(getTasks(sessionId)).rejects.toThrow('invalid JSON');
+    });
+  });
 });
