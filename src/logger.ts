@@ -65,6 +65,9 @@ function getBaseConfig(): LoggerOptions {
   };
 }
 
+// Track destination streams for flushing
+const _destinations: pino.DestinationStream[] = [];
+
 /**
  * Create a rotating file stream for daemon logs
  * Falls back to stdout if file creation fails
@@ -74,10 +77,14 @@ function createDaemonDestination(): pino.DestinationStream {
     ensureLogsDir();
     const today = new Date().toISOString().split('T')[0];
     const logPath = path.join(LOGS_DIR, `daemon-${today}.log`);
-    return pino.destination({ dest: logPath, sync: false });
+    const dest = pino.destination({ dest: logPath, sync: false });
+    _destinations.push(dest);
+    return dest;
   } catch {
     // Fallback to stdout if file creation fails
-    return pino.destination(1);
+    const dest = pino.destination(1);
+    _destinations.push(dest);
+    return dest;
   }
 }
 
@@ -88,10 +95,14 @@ function createHookDestination(): pino.DestinationStream {
   try {
     ensureLogsDir();
     const logPath = path.join(LOGS_DIR, 'hooks.log');
-    return pino.destination({ dest: logPath, sync: false });
+    const dest = pino.destination({ dest: logPath, sync: false });
+    _destinations.push(dest);
+    return dest;
   } catch {
     // Fallback to stdout if file creation fails
-    return pino.destination(1);
+    const dest = pino.destination(1);
+    _destinations.push(dest);
+    return dest;
   }
 }
 
@@ -191,6 +202,27 @@ export const logger: Logger = new Proxy({} as Logger, {
     return Reflect.get(getLogger(), prop);
   },
 });
+
+/**
+ * Flush all logger destination streams
+ * Call this before process exit to ensure all logs are written
+ */
+export async function flushLogs(): Promise<void> {
+  const flushPromises = _destinations.map((dest) => {
+    return new Promise<void>((resolve) => {
+      if ('flushSync' in dest && typeof dest.flushSync === 'function') {
+        try {
+          dest.flushSync();
+        } catch {
+          // Ignore flush errors
+        }
+      }
+      resolve();
+    });
+  });
+
+  await Promise.all(flushPromises);
+}
 
 // Re-export Logger type for consumers
 export type { Logger };
