@@ -26,12 +26,17 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
+    "@slack/bolt": "3.17.1",
     "dotenv": "^16.4.5",
+    "express-rate-limit": "^8.2.1",
+    "helmet": "^8.1.0",
+    "p-queue": "8.0.1",
     "pino": "^9.3.2",
     "proper-lockfile": "^4.1.2",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^20.11.0",
     "@types/pino": "^7.0.4",
     "@types/proper-lockfile": "^4.1.4",
