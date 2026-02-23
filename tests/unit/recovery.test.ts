@@ -132,8 +132,8 @@ describe('recovery', () => {
 
       const { commitTransaction } = await import('../../src/recovery.js');
 
-      // Should not throw
-      await expect(commitTransaction('tx_nonexistent')).resolves.toBeUndefined();
+      // Should not throw (tx doesn't exist but valid format)
+      await expect(commitTransaction('tx_1234567890_abc123')).resolves.toBeUndefined();
     });
   });
 
@@ -740,7 +740,7 @@ describe('recovery', () => {
         txLogPath,
         JSON.stringify([
           {
-            id: 'tx_complete',
+            id: 'tx_1234567890_abc123',
             operation: 'COMPLETE_TASK',
             sessionId: 'a0000000-0000-0000-0000-000000000001',
             timestamp: new Date().toISOString(),

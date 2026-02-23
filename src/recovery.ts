@@ -11,6 +11,7 @@
 import fs from 'fs/promises';
 import { statfs } from 'fs/promises';
 import path from 'path';
+import { z } from 'zod';
 import { DATA_DIR } from './config.js';
 import { createLogger, flushLogs } from './logger.js';
 import * as registry from './registry.js';
@@ -19,6 +20,84 @@ import { sendSlackMessage } from './slack-client.js';
 import { withFileLock, atomicWriteJSON } from './registry.js';
 
 const logger = createLogger('recovery');
+
+// =============================================================================
+// Security: Input validation schemas (SEC-001, SEC-002, SEC-003, SEC-004)
+// =============================================================================
+
+const SessionIdSchema = z.string().uuid();
+const TxIdSchema = z.string().regex(/^tx_\d+_[a-z0-9]+$/);
+
+/**
+ * Validate sessionId format (SEC-001)
+ */
+function validateSessionId(sessionId: string): string {
+  const result = SessionIdSchema.safeParse(sessionId);
+  if (!result.success) {
+    logger.warn({
+      action: 'INVALID_SESSION_ID',
+      sessionId: typeof sessionId === 'string' ? sessionId.slice(0, 50) : 'non-string',
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid session ID format' },
+    });
+    throw new Error('Invalid session ID format');
+  }
+  return result.data;
+}
+
+/**
+ * Validate transaction ID format (SEC-002)
+ */
+function validateTxId(txId: string): string {
+  const result = TxIdSchema.safeParse(txId);
+  if (!result.success) {
+    logger.warn({
+      action: 'INVALID_TX_ID',
+      txId: typeof txId === 'string' ? txId.slice(0, 50) : 'non-string',
+      error: { code: 'VALIDATION_ERROR', message: 'Invalid transaction ID format' },
+    });
+    throw new Error('Invalid transaction ID format');
+  }
+  return result.data;
+}
+
+/**
+ * Validate backup path is safe (SEC-003)
+ * - Must be absolute path
+ * - No path traversal (..)
+ * - Must be within DATA_DIR
+ */
+function validateBackupPath(basePath: string): string {
+  // Must be absolute
+  if (!path.isAbsolute(basePath)) {
+    logger.warn({
+      action: 'INVALID_BACKUP_PATH',
+      error: { code: 'PATH_NOT_ABSOLUTE', message: 'Backup path must be absolute' },
+    });
+    throw new Error('Backup path must be absolute');
+  }
+
+  // No path traversal
+  if (basePath.includes('..')) {
+    logger.warn({
+      action: 'PATH_TRAVERSAL_ATTEMPT',
+      error: { code: 'PATH_TRAVERSAL', message: 'Path traversal not allowed' },
+    });
+    throw new Error('Path traversal not allowed in backup path');
+  }
+
+  // Normalize and check within DATA_DIR
+  const normalizedPath = path.normalize(basePath);
+  const normalizedDataDir = path.normalize(DATA_DIR);
+  if (!normalizedPath.startsWith(normalizedDataDir)) {
+    logger.warn({
+      action: 'BACKUP_PATH_OUTSIDE_DATA_DIR',
+      error: { code: 'PATH_OUTSIDE_BOUNDARY', message: 'Backup path must be within data directory' },
+    });
+    throw new Error('Backup path must be within data directory');
+  }
+
+  return normalizedPath;
+}
 
 // File permissions: owner read/write only (0600)
 const FILE_MODE = 0o600;
@@ -100,6 +179,9 @@ async function ensureDataDir(): Promise<void> {
 export async function writeTransaction(
   tx: Omit<Transaction, 'id' | 'timestamp' | 'committed'>
 ): Promise<string> {
+  // SEC-001: Validate sessionId
+  validateSessionId(tx.sessionId);
+
   await ensureDataDir();
 
   return withFileLock(TX_LOG_PATH, async () => {
@@ -134,6 +216,9 @@ export async function writeTransaction(
  * @param txId - The transaction ID to commit
  */
 export async function commitTransaction(txId: string): Promise<void> {
+  // SEC-002: Validate txId format
+  validateTxId(txId);
+
   return withFileLock(TX_LOG_PATH, async () => {
     const log = await loadTransactionLog();
     const tx = log.find((t) => t.id === txId);
@@ -392,8 +477,11 @@ export async function resumeActiveSessions(): Promise<void> {
  * @param basePath - The base file path to backup
  */
 export async function rotateBackups(basePath: string): Promise<void> {
-  const dir = path.dirname(basePath);
-  const baseName = path.basename(basePath);
+  // SEC-003: Validate backup path
+  const validatedPath = validateBackupPath(basePath);
+
+  const dir = path.dirname(validatedPath);
+  const baseName = path.basename(validatedPath);
 
   let files: string[];
   try {
@@ -434,11 +522,11 @@ export async function rotateBackups(basePath: string): Promise<void> {
 
   // Create new backup
   try {
-    await fs.access(basePath);
+    await fs.access(validatedPath);
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const newBackupPath = `${basePath}.backup.${timestamp}`;
+    const newBackupPath = `${validatedPath}.backup.${timestamp}`;
 
-    await fs.copyFile(basePath, newBackupPath);
+    await fs.copyFile(validatedPath, newBackupPath);
     await fs.chmod(newBackupPath, FILE_MODE);
 
     logger.debug({

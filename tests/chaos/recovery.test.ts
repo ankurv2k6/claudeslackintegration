@@ -95,7 +95,7 @@ describe('recovery chaos tests', () => {
       await fs.writeFile(
         txLogPath,
         JSON.stringify([
-          { id: 'tx_1', operation: 'UNKNOWN_OP', sessionId: 'test', committed: false },
+          { id: 'tx_1234567890_abc001', operation: 'UNKNOWN_OP', sessionId: 'a0000000-0000-0000-0000-000000000001', committed: false },
         ])
       );
 
@@ -179,7 +179,7 @@ describe('recovery chaos tests', () => {
         txLogPath,
         JSON.stringify([
           {
-            id: 'tx_crash_claim',
+            id: 'tx_1234567890_claim1',
             operation: 'CLAIM_TASK',
             sessionId: 'a0000000-0000-0000-0000-000000000001',
             timestamp: new Date().toISOString(),
@@ -214,7 +214,7 @@ describe('recovery chaos tests', () => {
         txLogPath,
         JSON.stringify([
           {
-            id: 'tx_crash_update',
+            id: 'tx_1234567890_upd001',
             operation: 'UPDATE_SESSION',
             sessionId: 'a0000000-0000-0000-0000-000000000001',
             timestamp: new Date().toISOString(),
@@ -356,7 +356,7 @@ describe('recovery chaos tests', () => {
         txLogPath,
         JSON.stringify([
           {
-            id: 'tx_race_1',
+            id: 'tx_1234567890_race01',
             operation: 'UPDATE_SESSION',
             sessionId: 'a0000000-0000-0000-0000-000000000001',
             timestamp: new Date().toISOString(),
@@ -364,7 +364,7 @@ describe('recovery chaos tests', () => {
             committed: false,
           },
           {
-            id: 'tx_race_2',
+            id: 'tx_1234567890_race02',
             operation: 'CLAIM_TASK',
             sessionId: 'a0000000-0000-0000-0000-000000000002',
             timestamp: new Date().toISOString(),
