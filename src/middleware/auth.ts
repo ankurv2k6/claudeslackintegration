@@ -23,6 +23,53 @@ const logger = createLogger('auth');
 const gracePeriodTokens = new Map<string, number>();
 
 /**
+ * SEC-003: Periodic cleanup of expired grace period tokens
+ * Prevents memory accumulation from unused rotated tokens
+ */
+const GRACE_CLEANUP_INTERVAL = 60000; // 1 minute
+let gracePeriodCleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+function cleanupExpiredGracePeriodTokens(): void {
+  try {
+    const now = Date.now();
+    for (const [token, expiresAt] of gracePeriodTokens) {
+      if (now > expiresAt) {
+        gracePeriodTokens.delete(token);
+      }
+    }
+  } catch (err) {
+    logger.error({
+      action: 'GRACE_PERIOD_CLEANUP_FAILED',
+      error: (err as Error).message,
+    });
+  }
+}
+
+/**
+ * Start grace period token cleanup interval
+ */
+export function startGracePeriodCleanup(): void {
+  if (!gracePeriodCleanupTimer) {
+    gracePeriodCleanupTimer = setInterval(
+      cleanupExpiredGracePeriodTokens,
+      GRACE_CLEANUP_INTERVAL
+    );
+    // Allow process to exit even if interval is running
+    gracePeriodCleanupTimer.unref();
+  }
+}
+
+/**
+ * Stop grace period token cleanup interval (for testing)
+ */
+export function stopGracePeriodCleanup(): void {
+  if (gracePeriodCleanupTimer) {
+    clearInterval(gracePeriodCleanupTimer);
+    gracePeriodCleanupTimer = null;
+  }
+}
+
+/**
  * Add a token to grace period (for rotation)
  * @param token - The old token to keep valid
  * @param durationMs - Grace period duration (default 60s)

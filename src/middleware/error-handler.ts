@@ -136,10 +136,8 @@ export function errorHandler(
       method: req.method,
     });
 
-    // Don't expose internal error details to client
-    if (process.env.NODE_ENV === 'development') {
-      response.details = { message: err.message };
-    }
+    // SEC-001: Never expose internal error details to client
+    // Stack traces are logged server-side above, not sent to client
   }
 
   res.status(statusCode).json(response);

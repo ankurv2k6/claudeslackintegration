@@ -11,6 +11,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { z, type ZodSchema } from 'zod';
 import path from 'path';
+import fs from 'fs';
 import { createLogger } from '../logger.js';
 
 const logger = createLogger('validation');
@@ -39,6 +40,7 @@ const DENIED_PATHS = [
 
 /**
  * Validate path doesn't contain traversal or denied directories
+ * SEC-002: Resolves symlinks to prevent bypass via symlinked paths
  */
 function isValidPath(inputPath: string): boolean {
   // Must be absolute
@@ -51,11 +53,26 @@ function isValidPath(inputPath: string): boolean {
     return false;
   }
 
-  // Normalize and check against denied paths
+  // Normalize the string path first
   const normalized = path.normalize(inputPath);
-  return !DENIED_PATHS.some(
-    (denied) => normalized === denied || normalized.startsWith(denied + '/')
-  );
+
+  // SEC-002: Try to resolve symlinks if the path exists
+  // This prevents attackers from using symlinks to bypass DENIED_PATHS
+  let resolvedPath = normalized;
+  try {
+    // realpathSync resolves symlinks and returns the actual filesystem path
+    resolvedPath = fs.realpathSync(normalized);
+  } catch {
+    // Path doesn't exist yet - use normalized string path
+    // This is acceptable for new directories that will be created
+    resolvedPath = normalized;
+  }
+
+  // Check both normalized and resolved paths against denied list
+  const isDenied = (p: string): boolean =>
+    DENIED_PATHS.some((denied) => p === denied || p.startsWith(denied + '/'));
+
+  return !isDenied(normalized) && !isDenied(resolvedPath);
 }
 
 /**

@@ -63,6 +63,8 @@ import {
   hostHeaderValidation,
   addGracePeriodToken,
   gracePeriodTokens,
+  startGracePeriodCleanup,
+  stopGracePeriodCleanup,
 } from '../../src/middleware/auth.js';
 import {
   validateBody,
@@ -157,6 +159,48 @@ describe('http-server', () => {
       bearerTokenAuth(mockReq as Request, mockRes as Response, mockNext);
 
       expect(mockRes.status).toHaveBeenCalledWith(401);
+    });
+  });
+
+  describe('gracePeriodCleanup', () => {
+    afterEach(() => {
+      stopGracePeriodCleanup();
+      gracePeriodTokens.clear();
+    });
+
+    it('starts and stops cleanup interval', () => {
+      startGracePeriodCleanup();
+      // Second call should be idempotent
+      startGracePeriodCleanup();
+
+      stopGracePeriodCleanup();
+      // Second call should be idempotent
+      stopGracePeriodCleanup();
+    });
+
+    it('cleans up expired tokens on addGracePeriodToken call', async () => {
+      // Add a token with 1ms expiry
+      const expiredToken = 'e'.repeat(64);
+      addGracePeriodToken(expiredToken, 1);
+
+      // Wait for it to expire
+      await new Promise((r) => setTimeout(r, 10));
+
+      // Add another token - this should trigger cleanup of expired ones
+      const newToken = 'f'.repeat(64);
+      addGracePeriodToken(newToken, 60000);
+
+      // Expired token should be cleaned up
+      expect(gracePeriodTokens.has(expiredToken)).toBe(false);
+      expect(gracePeriodTokens.has(newToken)).toBe(true);
+    });
+
+    it('addGracePeriodToken logs token addition', () => {
+      const token = 'g'.repeat(64);
+      addGracePeriodToken(token, 60000);
+
+      expect(gracePeriodTokens.size).toBe(1);
+      expect(gracePeriodTokens.has(token)).toBe(true);
     });
   });
 

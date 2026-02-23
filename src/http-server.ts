@@ -21,7 +21,7 @@ import { createLogger, withRequestId, withSessionId } from './logger.js';
 import * as registry from './registry.js';
 import * as taskQueue from './task-queue.js';
 import { sendSlackMessage } from './slack-client.js';
-import { bearerTokenAuth, hostHeaderValidation } from './middleware/auth.js';
+import { bearerTokenAuth, hostHeaderValidation, startGracePeriodCleanup } from './middleware/auth.js';
 import {
   validateBody,
   validateParams,
@@ -460,13 +460,23 @@ export function createServer(): net.Server {
 
   serverStartTime = Date.now();
 
-  // Start rate limit cleanup interval
+  // SEC-003: Start grace period token cleanup
+  startGracePeriodCleanup();
+
+  // Start rate limit cleanup interval (LOG-007: wrap in try/catch)
   setInterval(() => {
-    const now = Date.now();
-    for (const [sessionId, limit] of sessionRateLimits) {
-      if (now > limit.resetAt + 60000) {
-        sessionRateLimits.delete(sessionId);
+    try {
+      const now = Date.now();
+      for (const [sessionId, limit] of sessionRateLimits) {
+        if (now > limit.resetAt + 60000) {
+          sessionRateLimits.delete(sessionId);
+        }
       }
+    } catch (err) {
+      logger.error({
+        action: 'RATE_LIMIT_CLEANUP_FAILED',
+        error: (err as Error).message,
+      });
     }
   }, RATE_LIMIT_CLEANUP_INTERVAL);
 
@@ -509,6 +519,19 @@ export function createServer(): net.Server {
       }
     });
 
+    // LOG-003: Add error handler for server errors
+    server.on('error', (err: NodeJS.ErrnoException) => {
+      logger.error({
+        action: 'SERVER_ERROR',
+        transport: 'unix',
+        error: {
+          code: err.code || 'UNKNOWN',
+          message: err.message,
+          syscall: err.syscall,
+        },
+      });
+    });
+
     return server;
   } else {
     // TCP mode
@@ -518,6 +541,19 @@ export function createServer(): net.Server {
         transport: 'tcp',
         port: config.daemonPort,
         host: '127.0.0.1',
+      });
+    });
+
+    // LOG-003: Add error handler for server errors
+    server.on('error', (err: NodeJS.ErrnoException) => {
+      logger.error({
+        action: 'SERVER_ERROR',
+        transport: 'tcp',
+        error: {
+          code: err.code || 'UNKNOWN',
+          message: err.message,
+          syscall: err.syscall,
+        },
       });
     });
 
