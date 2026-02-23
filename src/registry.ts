@@ -70,6 +70,19 @@ export const RegistrySchema = z.object({
   threadToSession: z.record(z.string(), z.string().uuid()),
 });
 
+// Input validation schema with path traversal prevention (SEC-001, SEC-002)
+export const CreateSessionInputSchema = z.object({
+  sessionId: z.string().uuid(),
+  threadTs: z.string().regex(/^\d+\.\d+$/),
+  channelId: z.string().startsWith('C'),
+  codebasePath: z.string()
+    .startsWith('/')
+    .refine(
+      (p) => !p.includes('..') && path.normalize(p) === p,
+      { message: 'codebasePath must be normalized absolute path without traversal' }
+    ),
+});
+
 // TypeScript types
 export interface ErrorEntry {
   code: string;
@@ -268,31 +281,34 @@ function validateTransition(from: SessionStatus, to: SessionStatus): void {
  * @returns The created session entry
  */
 export async function createSession(input: CreateSessionInput): Promise<SessionEntry> {
+  // Validate input at runtime (SEC-001)
+  const validatedInput = CreateSessionInputSchema.parse(input);
+
   return withFileLock(REGISTRY_PATH, async () => {
     const registry = await readRegistry();
     const now = new Date().toISOString();
 
     // Check for duplicate session ID
-    if (registry.sessions[input.sessionId]) {
+    if (registry.sessions[validatedInput.sessionId]) {
       throw new RegistryError(
         'SESSION_EXISTS',
-        `Session ${input.sessionId} already exists`,
+        `Session ${validatedInput.sessionId} already exists`,
       );
     }
 
     // Check for duplicate thread
-    if (registry.threadToSession[input.threadTs]) {
+    if (registry.threadToSession[validatedInput.threadTs]) {
       throw new RegistryError(
         'THREAD_EXISTS',
-        `Thread ${input.threadTs} already has a session`,
+        `Thread ${validatedInput.threadTs} already has a session`,
       );
     }
 
     const session: SessionEntry = {
-      sessionId: input.sessionId,
-      threadTs: input.threadTs,
-      channelId: input.channelId,
-      codebasePath: input.codebasePath,
+      sessionId: validatedInput.sessionId,
+      threadTs: validatedInput.threadTs,
+      channelId: validatedInput.channelId,
+      codebasePath: validatedInput.codebasePath,
       status: 'PENDING',
       startedAt: now,
       lastActivityAt: now,
@@ -301,15 +317,15 @@ export async function createSession(input: CreateSessionInput): Promise<SessionE
     };
 
     // Add to registry
-    registry.sessions[input.sessionId] = session;
-    registry.threadToSession[input.threadTs] = input.sessionId;
+    registry.sessions[validatedInput.sessionId] = session;
+    registry.threadToSession[validatedInput.threadTs] = validatedInput.sessionId;
 
     await atomicWriteJSON(REGISTRY_PATH, registry);
 
     logger.info({
       action: 'SESSION_CREATED',
-      sessionId: input.sessionId,
-      threadTs: input.threadTs,
+      sessionId: validatedInput.sessionId,
+      threadTs: validatedInput.threadTs,
     });
 
     return session;

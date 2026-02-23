@@ -693,4 +693,72 @@ describe('registry', () => {
       expect(sessions.length).toBe(10);
     });
   });
+
+  describe('error handling edge cases', () => {
+    it('throws when recording error on non-existent session', async () => {
+      vi.doMock('../../src/config.js', () => ({
+        DATA_DIR: TEST_DATA_DIR,
+        LOGS_DIR: TEST_DATA_DIR,
+        getConfig: () => ({ logLevel: 'error' }),
+      }));
+
+      const { recordError } = await import('../../src/registry.js');
+
+      await expect(
+        recordError('a0000000-0000-0000-0000-000000000099', 'TEST', 'test')
+      ).rejects.toThrow('not found');
+    });
+
+    it('throws when incrementing injection count on non-existent session', async () => {
+      vi.doMock('../../src/config.js', () => ({
+        DATA_DIR: TEST_DATA_DIR,
+        LOGS_DIR: TEST_DATA_DIR,
+        getConfig: () => ({ logLevel: 'error' }),
+      }));
+
+      const { incrementInjectionCount } = await import('../../src/registry.js');
+
+      await expect(
+        incrementInjectionCount('a0000000-0000-0000-0000-000000000099')
+      ).rejects.toThrow('not found');
+    });
+
+    it('rejects path traversal in codebasePath', async () => {
+      vi.doMock('../../src/config.js', () => ({
+        DATA_DIR: TEST_DATA_DIR,
+        LOGS_DIR: TEST_DATA_DIR,
+        getConfig: () => ({ logLevel: 'error' }),
+      }));
+
+      const { createSession } = await import('../../src/registry.js');
+
+      await expect(
+        createSession({
+          sessionId: 'a0000000-0000-0000-0000-000000000020',
+          threadTs: '1234567890.123480',
+          channelId: 'C1234567890',
+          codebasePath: '/home/../etc/passwd',
+        })
+      ).rejects.toThrow('codebasePath must be normalized');
+    });
+
+    it('rejects invalid session ID format', async () => {
+      vi.doMock('../../src/config.js', () => ({
+        DATA_DIR: TEST_DATA_DIR,
+        LOGS_DIR: TEST_DATA_DIR,
+        getConfig: () => ({ logLevel: 'error' }),
+      }));
+
+      const { createSession } = await import('../../src/registry.js');
+
+      await expect(
+        createSession({
+          sessionId: 'not-a-uuid',
+          threadTs: '1234567890.123481',
+          channelId: 'C1234567890',
+          codebasePath: '/home/user/project',
+        })
+      ).rejects.toThrow();
+    });
+  });
 });
