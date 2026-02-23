@@ -59,9 +59,19 @@ export const CreateTaskInputSchema = z.object({
 
 /**
  * Validate sessionId to prevent path traversal attacks (SEC-001)
+ * Logs validation errors for security observability (LOG-002, SEC-LOG-001)
  */
 function validateSessionId(sessionId: string): string {
-  return SessionIdSchema.parse(sessionId);
+  const result = SessionIdSchema.safeParse(sessionId);
+  if (!result.success) {
+    logger.warn({
+      action: 'INVALID_SESSION_ID',
+      sessionId: typeof sessionId === 'string' ? sessionId.slice(0, 50) : 'non-string',
+      errors: result.error.issues,
+    });
+    throw new TaskQueueError('INVALID_SESSION_ID', 'Invalid session ID format');
+  }
+  return result.data;
 }
 
 // TypeScript types
@@ -218,8 +228,17 @@ function resetStuckTasks(queue: TaskQueue): number {
 export async function addTask(sessionId: string, input: CreateTaskInput): Promise<boolean> {
   // SEC-001: Validate sessionId to prevent path traversal
   const validSessionId = validateSessionId(sessionId);
-  // SEC-002, SEC-003: Validate input
-  const validInput = CreateTaskInputSchema.parse(input);
+  // SEC-002, SEC-003: Validate input (LOG-003, SEC-LOG-001)
+  const inputResult = CreateTaskInputSchema.safeParse(input);
+  if (!inputResult.success) {
+    logger.warn({
+      action: 'INVALID_TASK_INPUT',
+      sessionId: validSessionId,
+      errors: inputResult.error.issues,
+    });
+    throw new TaskQueueError('INVALID_INPUT', 'Invalid task input');
+  }
+  const validInput = inputResult.data;
 
   await ensureTasksDir();
   const filePath = getTaskFilePath(validSessionId);
