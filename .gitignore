@@ -6,6 +6,10 @@ dist/
 
 # Coverage
 coverage/
+coverage.json
+
+# Verification reports
+context/verification/
 
 # Environment files
 .env
