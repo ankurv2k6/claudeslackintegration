@@ -74,25 +74,49 @@ Errors: MISSING_ENV → fail fast with list | INVALID_VALUE → fail with detail
 
 ## 6. Implementation Plan
 
-**TASK 1**: Create config schema (0.25d, blocked by -)
+**TASK 1**: Create config schema (0.25d, blocked by -) ✅
 - Files: `src/config.ts`
 - AC: All env vars have Zod validators; DAEMON_SECRET auto-generated if missing
 - Impl: see impl-M01 S4.1
+- **Complete**: commit 27f8b30
 
-**TASK 2**: Implement loadConfig function (0.25d, blocked by TASK 1)
+**TASK 2**: Implement loadConfig function (0.25d, blocked by TASK 1) ✅
 - Files: `src/config.ts`
 - AC: Returns typed Config; throws descriptive error on failure
 - Impl: see impl-M01 S4.2
+- **Complete**: commit 27f8b30
 
-**TASK 3**: Add path resolution (0.25d, blocked by TASK 1)
+**TASK 3**: Add path resolution (0.25d, blocked by TASK 1) ✅
 - Files: `src/config.ts`
 - AC: DATA_DIR and HOOKS_DIR resolve to `~/.claude/slack_integration/`
 - Impl: see impl-M01 S4.3
+- **Complete**: commit 27f8b30
 
-**TASK 4**: Unit tests (0.25d, blocked by TASK 2)
+**TASK 4**: Unit tests (0.25d, blocked by TASK 2) ✅
 - Files: `tests/unit/config.test.ts`
 - AC: 100% coverage; tests valid, invalid, missing, defaults
 - Impl: see impl-M01 S4.4
+- **Complete**: commit 27f8b30
+
+---
+
+## Implementation Progress
+
+**Status**: ✅ Complete | **Branch**: main
+**Started**: 2026-02-23 | **Completed**: 2026-02-23
+
+| Phase | Status | Commits |
+|-------|--------|---------|
+| TASK 1 | ✅ Complete | 27f8b30 |
+| TASK 2 | ✅ Complete | 27f8b30 |
+| TASK 3 | ✅ Complete | 27f8b30 |
+| TASK 4 | ✅ Complete | 27f8b30 |
+
+**Verification**: /verify-implementation 2026-02-23
+- Gaps: 1 LOW (deferred - partial secret logging acceptable per design)
+- Tests: PASS (20/20) | Coverage: 100% | Build: PASS | Types: PASS
+- §7A Playbook: 3/3 PASS
+- Contract compliance: PASS (all LOCKED interfaces match)
 
 ---
 
