@@ -83,25 +83,48 @@ Errors: FILE_WRITE_FAILED → fallback to stdout only
 
 ## 6. Implementation Plan
 
-**TASK 1**: Configure Pino with redaction (0.25d, blocked by M-01)
+**TASK 1**: Configure Pino with redaction (0.25d, blocked by M-01) ✅
 - Files: `src/logger.ts`
 - AC: Redaction paths prevent sensitive data leakage
 - Impl: see impl-M02 S4.1
+- **Complete**: commit d9e3528
 
-**TASK 2**: Add rotating file transport (0.25d, blocked by TASK 1)
+**TASK 2**: Add rotating file transport (0.25d, blocked by TASK 1) ✅
 - Files: `src/logger.ts`
 - AC: Logs rotate at 10MB, keep 5 files
 - Impl: see impl-M02 S4.2
+- **Complete**: commit d9e3528
 
-**TASK 3**: Create hook logger factory (0.25d, blocked by TASK 1)
+**TASK 3**: Create hook logger factory (0.25d, blocked by TASK 1) ✅
 - Files: `src/logger.ts`
 - AC: Hook logger writes to hooks.log with hookType base field
 - Impl: see impl-M02 S4.3
+- **Complete**: commit d9e3528
 
-**TASK 4**: Unit tests (0.25d, blocked by TASK 2)
+**TASK 4**: Unit tests (0.25d, blocked by TASK 2) ✅
 - Files: `tests/unit/logger.test.ts`
 - AC: Verify redaction, format, rotation setup
 - Impl: see impl-M02 S4.4
+- **Complete**: commit d9e3528
+
+---
+
+## Implementation Progress
+
+**Status**: ✅ Complete | **Branch**: main
+**Started**: 2026-02-23 | **Completed**: 2026-02-23
+
+| Phase | Status | Commits |
+|-------|--------|---------|
+| TASK 1 | ✅ Complete | d9e3528 |
+| TASK 2 | ✅ Complete | d9e3528 |
+| TASK 3 | ✅ Complete | d9e3528 |
+| TASK 4 | ✅ Complete | d9e3528 |
+
+**Verification**: 2026-02-23
+- Tests: PASS (29/29) | Coverage: 94.5% | Build: PASS | Types: PASS
+- §7A Playbook: 3/3 PASS
+- Exports: createLogger, createHookLogger, withRequestId, withSessionId, logger, getLogger, createStdoutLogger
 
 ---
 
