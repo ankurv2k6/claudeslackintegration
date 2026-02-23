@@ -1037,6 +1037,297 @@ describe('slack-client', () => {
     });
   });
 
+  describe('message subtype handling', () => {
+    it('logs message_changed events', async () => {
+      let messageHandler: ((args: { event: unknown }) => Promise<void>) | undefined;
+
+      const mockApp = {
+        event: vi.fn((eventName: string, handler: (args: { event: unknown }) => Promise<void>) => {
+          if (eventName === 'message') {
+            messageHandler = handler;
+          }
+        }),
+        error: vi.fn(),
+        start: vi.fn().mockResolvedValue(undefined),
+        stop: vi.fn().mockResolvedValue(undefined),
+        client: {
+          chat: { postMessage: vi.fn() },
+          reactions: { add: vi.fn() },
+        },
+      };
+
+      vi.doMock('@slack/bolt', () => ({
+        App: vi.fn().mockImplementation(() => mockApp),
+        LogLevel: { WARN: 'warn' },
+      }));
+
+      vi.doMock('../../src/config.js', () => ({
+        DATA_DIR: TEST_DATA_DIR,
+        LOGS_DIR: TEST_DATA_DIR,
+        getConfig: () => ({
+          slackBotToken: 'xoxb-test-token',
+          slackAppToken: 'xapp-test-token',
+          slackChannelId: 'C1234567890',
+          authorizedUsers: [],
+          logLevel: 'error',
+        }),
+      }));
+
+      const mockAddTask = vi.fn();
+      vi.doMock('../../src/registry.js', () => ({
+        getSessionByThread: vi.fn(),
+        getSession: vi.fn(),
+      }));
+      vi.doMock('../../src/task-queue.js', () => ({
+        addTask: mockAddTask,
+        removeTaskByMessageTs: vi.fn(),
+      }));
+
+      const { createSlackClient, startSlackClient } = await import('../../src/slack-client.js');
+
+      const app = createSlackClient();
+      await startSlackClient(app);
+
+      // Simulate message_changed event
+      const editEvent = {
+        type: 'message',
+        subtype: 'message_changed',
+        ts: '1234567890.123456',
+        thread_ts: '1234567890.000000',
+        channel: 'C1234567890',
+      };
+
+      if (messageHandler) {
+        await messageHandler({ event: editEvent });
+      }
+
+      // addTask should NOT be called for edit events
+      expect(mockAddTask).not.toHaveBeenCalled();
+    });
+
+    it('handles message_deleted by removing task', async () => {
+      let messageHandler: ((args: { event: unknown }) => Promise<void>) | undefined;
+
+      const mockApp = {
+        event: vi.fn((eventName: string, handler: (args: { event: unknown }) => Promise<void>) => {
+          if (eventName === 'message') {
+            messageHandler = handler;
+          }
+        }),
+        error: vi.fn(),
+        start: vi.fn().mockResolvedValue(undefined),
+        stop: vi.fn().mockResolvedValue(undefined),
+        client: {
+          chat: { postMessage: vi.fn() },
+          reactions: { add: vi.fn() },
+        },
+      };
+
+      vi.doMock('@slack/bolt', () => ({
+        App: vi.fn().mockImplementation(() => mockApp),
+        LogLevel: { WARN: 'warn' },
+      }));
+
+      vi.doMock('../../src/config.js', () => ({
+        DATA_DIR: TEST_DATA_DIR,
+        LOGS_DIR: TEST_DATA_DIR,
+        getConfig: () => ({
+          slackBotToken: 'xoxb-test-token',
+          slackAppToken: 'xapp-test-token',
+          slackChannelId: 'C1234567890',
+          authorizedUsers: [],
+          logLevel: 'error',
+        }),
+      }));
+
+      const sessionId = 'a0000000-0000-0000-0000-000000000001';
+      const mockSession = {
+        sessionId,
+        threadTs: '1234567890.000000',
+        channelId: 'C1234567890',
+        status: 'ACTIVE' as const,
+      };
+
+      const mockRemoveTaskByMessageTs = vi.fn().mockResolvedValue(true);
+      vi.doMock('../../src/registry.js', () => ({
+        getSessionByThread: vi.fn().mockResolvedValue(mockSession),
+        getSession: vi.fn().mockResolvedValue(mockSession),
+      }));
+      vi.doMock('../../src/task-queue.js', () => ({
+        addTask: vi.fn(),
+        removeTaskByMessageTs: mockRemoveTaskByMessageTs,
+      }));
+
+      const { createSlackClient, startSlackClient } = await import('../../src/slack-client.js');
+
+      const app = createSlackClient();
+      await startSlackClient(app);
+
+      // Simulate message_deleted event (needs ts field for first schema validation)
+      const deleteEvent = {
+        type: 'message',
+        subtype: 'message_deleted',
+        ts: '1234567891.000001',
+        deleted_ts: '1234567890.999999',
+        thread_ts: '1234567890.000000',
+        channel: 'C1234567890',
+      };
+
+      if (messageHandler) {
+        await messageHandler({ event: deleteEvent });
+      }
+
+      // removeTaskByMessageTs should be called
+      expect(mockRemoveTaskByMessageTs).toHaveBeenCalledWith(sessionId, '1234567890.999999');
+    });
+  });
+
+  describe('security: event validation (SEC-001)', () => {
+    it('rejects invalid event structure', async () => {
+      let messageHandler: ((args: { event: unknown }) => Promise<void>) | undefined;
+
+      const mockApp = {
+        event: vi.fn((eventName: string, handler: (args: { event: unknown }) => Promise<void>) => {
+          if (eventName === 'message') {
+            messageHandler = handler;
+          }
+        }),
+        error: vi.fn(),
+        start: vi.fn().mockResolvedValue(undefined),
+        stop: vi.fn().mockResolvedValue(undefined),
+        client: {
+          chat: { postMessage: vi.fn() },
+          reactions: { add: vi.fn() },
+        },
+      };
+
+      vi.doMock('@slack/bolt', () => ({
+        App: vi.fn().mockImplementation(() => mockApp),
+        LogLevel: { WARN: 'warn' },
+      }));
+
+      vi.doMock('../../src/config.js', () => ({
+        DATA_DIR: TEST_DATA_DIR,
+        LOGS_DIR: TEST_DATA_DIR,
+        getConfig: () => ({
+          slackBotToken: 'xoxb-test-token',
+          slackAppToken: 'xapp-test-token',
+          slackChannelId: 'C1234567890',
+          authorizedUsers: [],
+          logLevel: 'error',
+        }),
+      }));
+
+      const mockAddTask = vi.fn();
+      vi.doMock('../../src/registry.js', () => ({
+        getSessionByThread: vi.fn(),
+        getSession: vi.fn(),
+      }));
+      vi.doMock('../../src/task-queue.js', () => ({
+        addTask: mockAddTask,
+        removeTaskByMessageTs: vi.fn(),
+      }));
+
+      const { createSlackClient, startSlackClient } = await import('../../src/slack-client.js');
+
+      const app = createSlackClient();
+      await startSlackClient(app);
+
+      // Simulate invalid event (wrong type)
+      const invalidEvent = {
+        type: 'invalid_type', // Invalid
+        ts: '1234567890.123456',
+        channel: 'C1234567890',
+      };
+
+      if (messageHandler) {
+        await messageHandler({ event: invalidEvent });
+      }
+
+      // addTask should NOT be called for invalid events
+      expect(mockAddTask).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('security: deduplication (SEC-005)', () => {
+    it('rejects duplicate messages within dedup window', async () => {
+      let messageHandler: ((args: { event: unknown }) => Promise<void>) | undefined;
+
+      const mockApp = {
+        event: vi.fn((eventName: string, handler: (args: { event: unknown }) => Promise<void>) => {
+          if (eventName === 'message') {
+            messageHandler = handler;
+          }
+        }),
+        error: vi.fn(),
+        start: vi.fn().mockResolvedValue(undefined),
+        stop: vi.fn().mockResolvedValue(undefined),
+        client: {
+          chat: { postMessage: vi.fn() },
+          reactions: { add: vi.fn() },
+        },
+      };
+
+      vi.doMock('@slack/bolt', () => ({
+        App: vi.fn().mockImplementation(() => mockApp),
+        LogLevel: { WARN: 'warn' },
+      }));
+
+      vi.doMock('../../src/config.js', () => ({
+        DATA_DIR: TEST_DATA_DIR,
+        LOGS_DIR: TEST_DATA_DIR,
+        getConfig: () => ({
+          slackBotToken: 'xoxb-test-token',
+          slackAppToken: 'xapp-test-token',
+          slackChannelId: 'C1234567890',
+          authorizedUsers: [],
+          logLevel: 'error',
+        }),
+      }));
+
+      const sessionId = 'a0000000-0000-0000-0000-000000000001';
+      const mockSession = {
+        sessionId,
+        threadTs: '1234567890.000000',
+        channelId: 'C1234567890',
+        status: 'ACTIVE' as const,
+      };
+
+      const mockAddTask = vi.fn().mockResolvedValue(true);
+      vi.doMock('../../src/registry.js', () => ({
+        getSessionByThread: vi.fn().mockResolvedValue(mockSession),
+        getSession: vi.fn().mockResolvedValue(mockSession),
+      }));
+      vi.doMock('../../src/task-queue.js', () => ({
+        addTask: mockAddTask,
+        removeTaskByMessageTs: vi.fn(),
+      }));
+
+      const { createSlackClient, startSlackClient } = await import('../../src/slack-client.js');
+
+      const app = createSlackClient();
+      await startSlackClient(app);
+
+      const validEvent = {
+        type: 'message',
+        user: 'U1234567890',
+        ts: '1234567890.999999',
+        thread_ts: '1234567890.000000',
+        channel: 'C1234567890',
+        text: 'First message',
+      };
+
+      // Process same message twice
+      if (messageHandler) {
+        await messageHandler({ event: validEvent });
+        await messageHandler({ event: validEvent }); // Duplicate
+      }
+
+      // addTask should only be called once (dedup should filter second)
+      expect(mockAddTask).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('constants', () => {
     it('exports MAX_MESSAGE_LENGTH', async () => {
       vi.doMock('@slack/bolt', () => ({
